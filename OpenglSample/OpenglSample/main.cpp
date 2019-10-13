@@ -275,7 +275,7 @@ int main(void)
 		Model = glm::translate(Model, glm::vec3(0.0f, 0.0f, 0.0f));
 		Model = glm::rotate(Model, glm::radians(5.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
-		Model2 = glm::translate(Model2, glm::vec3(0.0f, 0.0f, 1.0f));
+		Model2 = glm::translate(Model, glm::vec3(0.0f, 0.0f, 8.0f));		//수정 : 기준점을 Model로 잡아서 공전하게 만듦
 		Model2 = glm::rotate(Model2, glm::radians(5.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 		// Our ModelViewProjection : multiplication of our 3 matrices
 		glm::mat4 MVP = Projection * View * Model; // Remember, matrix multiplication is the other way around
