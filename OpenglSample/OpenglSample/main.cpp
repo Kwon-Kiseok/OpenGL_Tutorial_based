@@ -180,7 +180,7 @@ int main(void)
 	glm::mat4 Model2 = glm::mat4(1.0f);
 	// Our vertices. Tree consecutive floats give a 3D vertex; Three consecutive vertices give a triangle.
 	// A cube has 6 faces with 2 triangles each, so this makes 6*2=12 triangles, and 12*3 vertices
-	static const GLfloat g_vertex_buffer_data[] = {
+	/*static const GLfloat g_vertex_buffer_data[] = {
 		-1.0f,-1.0f,-1.0f,
 		-1.0f,-1.0f, 1.0f,
 		-1.0f, 1.0f, 1.0f,
@@ -217,7 +217,7 @@ int main(void)
 		1.0f, 1.0f, 1.0f,
 		-1.0f, 1.0f, 1.0f,
 		1.0f,-1.0f, 1.0f
-	};
+	};*/
 
 
 	// One color for each vertex. They were generated randomly.
@@ -260,11 +260,53 @@ int main(void)
 		0.982f,  0.099f,  0.879f
 	};
 
+	//파일스트림 변수 생성
+	//ifstream 으로 파일을 입력함
+	ifstream is;
+	//큐브에 해당하는 버텍스 배열생성
+	static GLfloat g_vertex_buffer_data[108];
+	//큐브에 해당하는 텍스트 파일 읽어오기
+
+	
+	is.open("VertexData_Cube.txt");
+
+	if (is.is_open())
+	{
+		std::cout << "VertexData_Cube.txt 파일 읽음" << std::endl;
+		for (int i = 0; i < 108; i++)
+		{
+			is >> g_vertex_buffer_data[i];
+		}
+		is.close();
+	}
+	else
+	{
+		std::cout << "파일을 열 수 없습니다" << std::endl;
+	}
+
+	//삼각형에 해당하는 버텍스 배열 생성
+	static GLfloat g_triangle_vertex_buffer_data[9];
+	//삼각형에 해당하는 텍스트 파일 읽어오기
+	is.open("VertexData_Triangle.txt");
+
+	if (is.is_open())
+	{
+		std::cout << "VertexData_Triangle.txt 파일 읽음" << std::endl;
+		for (int i = 0; i < 9; i++)
+		{
+			is >> g_triangle_vertex_buffer_data[i];
+		}
+		is.close();
+	}
+	else
+	{
+		std::cout << "파일을 열 수 없습니다" << std::endl;
+	}
 
 	GLuint vertexbuffer;
 	glGenBuffers(1, &vertexbuffer);
 	glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(g_vertex_buffer_data), g_vertex_buffer_data, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(g_triangle_vertex_buffer_data), g_triangle_vertex_buffer_data, GL_STATIC_DRAW);
 
 	GLuint colorbuffer;
 	glGenBuffers(1, &colorbuffer);
