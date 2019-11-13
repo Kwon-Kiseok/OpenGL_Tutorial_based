@@ -1,4 +1,6 @@
-// Include standard headers
+// main.cpp
+#include <iostream>
+
 #include <stdio.h>
 #include <string>
 #include <vector>
@@ -10,9 +12,6 @@
 
 #include "include/GL/glew.h"		
 #include "include/GLFW/glfw3.h" 
-GLFWwindow* window;
-
-// Include GLM
 #include "glm/glm/glm.hpp"
 #include "glm/glm/gtc/matrix_transform.hpp"
 
@@ -20,8 +19,107 @@ GLFWwindow* window;
 #pragma comment(lib, "lib-vc2017/glew32.lib")
 #pragma comment(lib, "lib-vc2017/glfw3.lib")
 
+GLFWwindow* window;
+
 using namespace glm;
 using namespace std;
+
+#define FOURCC_DXT1 0x31545844 // Equivalent to "DXT1" in ASCII
+#define FOURCC_DXT3 0x33545844 // Equivalent to "DXT3" in ASCII
+#define FOURCC_DXT5 0x35545844 // Equivalent to "DXT5" in ASCII
+
+GLuint loadDDS(const char * imagepath) {
+
+	unsigned char header[124];
+
+	FILE *fp;
+
+	/* try to open the file */
+	fopen_s(&fp, imagepath, "rb");
+	if (fp == NULL) {
+		printf("%s could not be opened. Are you in the right directory ? Don't forget to read the FAQ !\n", imagepath); getchar();
+		return 0;
+	}
+
+	/* verify the type of file */
+	char filecode[4];
+	fread(filecode, 1, 4, fp);
+	if (strncmp(filecode, "DDS ", 4) != 0) {
+		fclose(fp);
+		return 0;
+	}
+
+	/* get the surface desc */
+	fread(&header, 124, 1, fp);
+
+	unsigned int height = *(unsigned int*)&(header[8]);
+	unsigned int width = *(unsigned int*)&(header[12]);
+	unsigned int linearSize = *(unsigned int*)&(header[16]);
+	unsigned int mipMapCount = *(unsigned int*)&(header[24]);
+	unsigned int fourCC = *(unsigned int*)&(header[80]);
+
+
+	unsigned char * buffer;
+	unsigned int bufsize;
+	/* how big is it going to be including all mipmaps? */
+	bufsize = mipMapCount > 1 ? linearSize * 2 : linearSize;
+	buffer = (unsigned char*)malloc(bufsize * sizeof(unsigned char));
+	fread(buffer, 1, bufsize, fp);
+	/* close the file pointer */
+	fclose(fp);
+
+	unsigned int components = (fourCC == FOURCC_DXT1) ? 3 : 4;
+	unsigned int format;
+	switch (fourCC)
+	{
+	case FOURCC_DXT1:
+		format = GL_COMPRESSED_RGBA_S3TC_DXT1_EXT;
+		break;
+	case FOURCC_DXT3:
+		format = GL_COMPRESSED_RGBA_S3TC_DXT3_EXT;
+		break;
+	case FOURCC_DXT5:
+		format = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
+		break;
+	default:
+		free(buffer);
+		return 0;
+	}
+
+	// Create one OpenGL texture
+	GLuint textureID;
+	glGenTextures(1, &textureID);
+
+	// "Bind" the newly created texture : all future texture functions will modify this texture
+	glBindTexture(GL_TEXTURE_2D, textureID);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+	unsigned int blockSize = (format == GL_COMPRESSED_RGBA_S3TC_DXT1_EXT) ? 8 : 16;
+	unsigned int offset = 0;
+
+	/* load the mipmaps */
+	for (unsigned int level = 0; level < mipMapCount && (width || height); ++level)
+	{
+		unsigned int size = ((width + 3) / 4)*((height + 3) / 4)*blockSize;
+		glCompressedTexImage2D(GL_TEXTURE_2D, level, format, width, height,
+			0, size, buffer + offset);
+
+		offset += size;
+		width /= 2;
+		height /= 2;
+
+		// Deal with Non-Power-Of-Two textures. This code is not included in the webpage to reduce clutter.
+		if (width < 1) width = 1;
+		if (height < 1) height = 1;
+
+	}
+
+	free(buffer);
+
+	return textureID;
+
+
+}
 
 GLuint LoadShaders(const char * vertex_file_path, const char * fragment_file_path) {
 
@@ -119,7 +217,6 @@ int main(void)
 	if (!glfwInit())
 	{
 		fprintf(stderr, "Failed to initialize GLFW\n");
-		getchar();
 		return -1;
 	}
 
@@ -130,10 +227,9 @@ int main(void)
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
 	// Open a window and create its OpenGL context
-	window = glfwCreateWindow(1024, 768, "Tutorial 04 - Colored Cube", NULL, NULL);
+	window = glfwCreateWindow(1024, 768, "Tutorial 05 - Textured Cube", NULL, NULL);
 	if (window == NULL) {
 		fprintf(stderr, "Failed to open GLFW window. If you have an Intel GPU, they are not 3.3 compatible. Try the 2.1 version of the tutorials.\n");
-		getchar();
 		glfwTerminate();
 		return -1;
 	}
@@ -143,8 +239,6 @@ int main(void)
 	glewExperimental = true; // Needed for core profile
 	if (glewInit() != GLEW_OK) {
 		fprintf(stderr, "Failed to initialize GLEW\n");
-		getchar();
-		glfwTerminate();
 		return -1;
 	}
 
@@ -165,177 +259,177 @@ int main(void)
 
 	// Create and compile our GLSL program from the shaders
 	GLuint programID = LoadShaders("vs.shader", "fs.shader");
+
 	// Get a handle for our "MVP" uniform
 	GLuint MatrixID = glGetUniformLocation(programID, "MVP");
+
 	// Projection matrix : 45° Field of View, 4:3 ratio, display range : 0.1 unit <-> 100 units
 	glm::mat4 Projection = glm::perspective(glm::radians(45.0f), 4.0f / 3.0f, 0.1f, 100.0f);
 	// Camera matrix
 	glm::mat4 View = glm::lookAt(
-		glm::vec3(40, 3, -3), // Camera is at (4,3,-3), in World Space
+		glm::vec3(4, 3, 3), // Camera is at (4,3,3), in World Space
 		glm::vec3(0, 0, 0), // and looks at the origin
 		glm::vec3(0, 1, 0)  // Head is up (set to 0,-1,0 to look upside-down)
 	);
 	// Model matrix : an identity matrix (model will be at the origin)
 	glm::mat4 Model = glm::mat4(1.0f);
-	glm::mat4 Model2 = glm::mat4(1.0f);
-	// Our vertices. Tree consecutive floats give a 3D vertex; Three consecutive vertices give a triangle.
-	// A cube has 6 faces with 2 triangles each, so this makes 6*2=12 triangles, and 12*3 vertices
-	/*static const GLfloat g_vertex_buffer_data[] = {
-		-1.0f,-1.0f,-1.0f,
-		-1.0f,-1.0f, 1.0f,
-		-1.0f, 1.0f, 1.0f,
-		1.0f, 1.0f,-1.0f,
-		-1.0f,-1.0f,-1.0f,
-		-1.0f, 1.0f,-1.0f,
-		1.0f,-1.0f, 1.0f,
-		-1.0f,-1.0f,-1.0f,
-		1.0f,-1.0f,-1.0f,
-		1.0f, 1.0f,-1.0f,
-		1.0f,-1.0f,-1.0f,
-		-1.0f,-1.0f,-1.0f,
-		-1.0f,-1.0f,-1.0f,
-		-1.0f, 1.0f, 1.0f,
-		-1.0f, 1.0f,-1.0f,
-		1.0f,-1.0f, 1.0f,
-		-1.0f,-1.0f, 1.0f,
-		-1.0f,-1.0f,-1.0f,
-		-1.0f, 1.0f, 1.0f,
-		-1.0f,-1.0f, 1.0f,
-		1.0f,-1.0f, 1.0f,
-		1.0f, 1.0f, 1.0f,
-		1.0f,-1.0f,-1.0f,
-		1.0f, 1.0f,-1.0f,
-		1.0f,-1.0f,-1.0f,
-		1.0f, 1.0f, 1.0f,
-		1.0f,-1.0f, 1.0f,
-		1.0f, 1.0f, 1.0f,
-		1.0f, 1.0f,-1.0f,
-		-1.0f, 1.0f,-1.0f,
-		1.0f, 1.0f, 1.0f,
-		-1.0f, 1.0f,-1.0f,
-		-1.0f, 1.0f, 1.0f,
-		1.0f, 1.0f, 1.0f,
-		-1.0f, 1.0f, 1.0f,
-		1.0f,-1.0f, 1.0f
-	};*/
+	// Our ModelViewProjection : multiplication of our 3 matrices
+	glm::mat4 MVP = Projection * View * Model; // Remember, matrix multiplication is the other way around
+
+											   // Load the texture using any two methods
+											   //GLuint Texture = loadBMP_custom("uvtemplate.bmp");
+	GLuint Texture = loadDDS("uvtemplate.DDS");
+
+	// Get a handle for our "myTextureSampler" uniform
+	GLuint TextureID = glGetUniformLocation(programID, "myTextureSampler");
 
 
-	// One color for each vertex. They were generated randomly.
-	static const GLfloat g_color_buffer_data[] = {
-		0.583f,  0.771f,  0.014f,
-		0.609f,  0.115f,  0.436f,
-		0.327f,  0.483f,  0.844f,
-		0.822f,  0.569f,  0.201f,
-		0.435f,  0.602f,  0.223f,
-		0.310f,  0.747f,  0.185f,
-		0.597f,  0.770f,  0.761f,
-		0.559f,  0.436f,  0.730f,
-		0.359f,  0.583f,  0.152f,
-		0.483f,  0.596f,  0.789f,
-		0.559f,  0.861f,  0.639f,
-		0.195f,  0.548f,  0.859f,
-		0.014f,  0.184f,  0.576f,
-		0.771f,  0.328f,  0.970f,
-		0.406f,  0.615f,  0.116f,
-		0.676f,  0.977f,  0.133f,
-		0.971f,  0.572f,  0.833f,
-		0.140f,  0.616f,  0.489f,
-		0.997f,  0.513f,  0.064f,
-		0.945f,  0.719f,  0.592f,
-		0.543f,  0.021f,  0.978f,
-		0.279f,  0.317f,  0.505f,
-		0.167f,  0.620f,  0.077f,
-		0.347f,  0.857f,  0.137f,
-		0.055f,  0.953f,  0.042f,
-		0.714f,  0.505f,  0.345f,
-		0.783f,  0.290f,  0.734f,
-		0.722f,  0.645f,  0.174f,
-		0.302f,  0.455f,  0.848f,
-		0.225f,  0.587f,  0.040f,
-		0.517f,  0.713f,  0.338f,
-		0.053f,  0.959f,  0.120f,
-		0.393f,  0.621f,  0.362f,
-		0.673f,  0.211f,  0.457f,
-		0.820f,  0.883f,  0.371f,
-		0.982f,  0.099f,  0.879f
-	};
+	//-----------------------------------------------------------
+	int size = 0;		//배열의 사이즈 크기 파악용
+	int position = 0;
+	ifstream File;	//파일변수
+	string search;	//파일 내 단어 찾기용 변수
+	string FileName;	//텍스처파일명 변수
 
-	//파일스트림 변수 생성
-	//ifstream 으로 파일을 입력함
-	ifstream is;
-	//큐브에 해당하는 버텍스 배열생성
-	static GLfloat g_vertex_buffer_data[108];
-	//큐브에 해당하는 텍스트 파일 읽어오기
+	File.open("Data.txt");
 
-	
-	is.open("VertexData_Cube.txt");
-
-	if (is.is_open())
+	//버텍스 부분 파일의 크기 파악
+	while (search != "vertexData")
 	{
-		std::cout << "VertexData_Cube.txt 파일 읽음" << std::endl;
-		for (int i = 0; i < 108; i++)
+		File >> search;
+	}
+
+	for (size; search != "vertexDataEnd"; size++)
+	{
+		File >> search;
+	}
+
+	//파일을 처음으로 되돌려줌
+	File.seekg(0);
+
+	//버텍스 버퍼 동적할당
+	static GLfloat *g_vertex_buffer_data = new GLfloat[size];
+
+	//버텍스 버퍼에 값을 할당해줌
+	for (int i = 0; i < size ; i++)
+	{
+		File >> search;
+		//구분 문자에서는 스킵
+		if (search == "vertexData" || search == "vertexDataEnd")
 		{
-			is >> g_vertex_buffer_data[i];
+			continue;
 		}
-		is.close();
-	}
-	else
-	{
-		std::cout << "파일을 열 수 없습니다" << std::endl;
-	}
-
-	//삼각형에 해당하는 버텍스 배열 생성
-	static GLfloat g_triangle_vertex_buffer_data[9];
-	//삼각형에 해당하는 텍스트 파일 읽어오기
-	is.open("VertexData_Triangle.txt");
-
-	if (is.is_open())
-	{
-		std::cout << "VertexData_Triangle.txt 파일 읽음" << std::endl;
-		for (int i = 0; i < 9; i++)
+		//구분문자 시 인덱스를 맞춰주기 위해 -1 해줌
+		else
 		{
-			is >> g_triangle_vertex_buffer_data[i];
+			const char* offset = search.c_str();
+			g_vertex_buffer_data[i-1] = atof(offset);
+
+			//cout << i-1 <<" "<<g_vertex_buffer_data[i-1] << endl;
 		}
-		is.close();
+
 	}
-	else
+
+	//파일 이름 받아오기
+	while (search != "FileName")
 	{
-		std::cout << "파일을 열 수 없습니다" << std::endl;
+		File >> search;
 	}
+
+	File >> FileName;
+	cout <<"Texture File name : " <<FileName << endl;
+
+	//UV좌표 받아오기
+	while (search != "uvData")
+	{
+		File >> search;
+	}
+	size = 1;
+
+	//uvData 에서 uvDataEnd 까지의 사이즈를 구함
+	for (size; search != "uvDataEnd"; size++)
+	{
+		File >> search;
+	}
+
+	//파일을 다시 처음부터 읽어줌
+	File.seekg(0);
+
+	//파일 커서를 uvData에 맞춰줌
+	while (search != "uvData")
+	{
+		File >> search;
+	}
+
+	//파일 커서가 uvData 일 때, 위치를 알려줌
+	if (search == "uvData")
+	{
+		position = File.tellg();
+		cout << position <<endl;
+	}
+
+	//파일 커서 위치를 uvData 다음으로 옮겨줌
+	File.seekg(position + 1);
+
+	//uv 버퍼 동적할당
+	static GLfloat *g_uv_buffer_data = new GLfloat[size];
+
+	//uv 버퍼에 값을 할당해줌
+	for (int i = 0; i < size; i++)
+	{
+		File >> search;
+		if (i%2 == 1)
+		{
+			char tempChar[50];
+			strcpy_s(tempChar, sizeof(tempChar), search.c_str());
+			char *Context = NULL;
+			char *token = strtok_s(tempChar, "-", &Context);
+			float LeftNum = atof(token);
+			float RightNum = atof(Context);
+			
+			g_uv_buffer_data[i] = LeftNum - RightNum;
+		}
+		else
+		{
+			const char* offset = search.c_str();
+			g_uv_buffer_data[i] = atof(offset);
+		}
+	}
+
+	File.close();
+	//-----------------------------------------------------------
 
 	GLuint vertexbuffer;
 	glGenBuffers(1, &vertexbuffer);
 	glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(g_triangle_vertex_buffer_data), g_triangle_vertex_buffer_data, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, _msize(g_vertex_buffer_data), g_vertex_buffer_data, GL_STATIC_DRAW);
 
-	GLuint colorbuffer;
-	glGenBuffers(1, &colorbuffer);
-	glBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(g_color_buffer_data), g_color_buffer_data, GL_STATIC_DRAW);
+	GLuint uvbuffer;
+	glGenBuffers(1, &uvbuffer);
+	glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
+	glBufferData(GL_ARRAY_BUFFER, _msize(g_uv_buffer_data), g_uv_buffer_data, GL_STATIC_DRAW);
 
 	do {
-		Model = glm::translate(Model, glm::vec3(0.0f, 0.0f, 0.0f));
-		Model = glm::rotate(Model, glm::radians(5.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
-		Model2 = glm::translate(Model, glm::vec3(0.0f, 0.0f, 8.0f));		//수정 : 기준점을 Model로 잡아서 공전하게 만듦
-		Model2 = glm::rotate(Model2, glm::radians(5.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-		// Our ModelViewProjection : multiplication of our 3 matrices
-		glm::mat4 MVP = Projection * View * Model; // Remember, matrix multiplication is the other way around
-		glm::mat4 MVP2 = Projection * View * Model2;
-
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear the screen
+		// Clear the screen
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		// Use our shader
-		// 쉐이더 프로그램을 불러옴
 		glUseProgram(programID);
+
 		// Send our transformation to the currently bound shader, 
 		// in the "MVP" uniform
-		// 지구에 해당하는 큐브 MVP 행렬 
 		glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
+
+		// Bind our texture in Texture Unit 0
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, Texture);
+		// Set our "myTextureSampler" sampler to use Texture Unit 0
+		glUniform1i(TextureID, 0);
+
 		// 1rst attribute buffer : vertices
-		glEnableVertexAttribArray(0);	//버텍스 배열의 속성을 넘겨주는 기능 활성화
-		glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);	//버텍스 버퍼 묶어줌
-		// 속성 값들을 넘겨주는 포인터함수
+		glEnableVertexAttribArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
 		glVertexAttribPointer(
 			0,                  // attribute. No particular reason for 0, but must match the layout in the shader.
 			3,                  // size
@@ -345,54 +439,31 @@ int main(void)
 			(void*)0            // array buffer offset
 		);
 
-		// 2nd attribute buffer : colors
+		//uv 좌표값을 프레임마다 더해서 갱신해줌
+		for (int i = 0; i < size; i++)
+		{
+			g_uv_buffer_data[i] += 0.005f;
+		}
+		glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
+		glBufferData(GL_ARRAY_BUFFER, _msize(g_uv_buffer_data), g_uv_buffer_data, GL_STATIC_DRAW);
+
+		// 2nd attribute buffer : UVs
 		glEnableVertexAttribArray(1);
-		glBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
+		glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
 		glVertexAttribPointer(
 			1,                                // attribute. No particular reason for 1, but must match the layout in the shader.
-			3,                                // size
+			2,                                // size : U+V => 2
 			GL_FLOAT,                         // type
 			GL_FALSE,                         // normalized?
 			0,                                // stride
 			(void*)0                          // array buffer offset
 		);
-		// 지구에 해당하는 큐브 그려주기
+
+		// Draw the triangle !
 		glDrawArrays(GL_TRIANGLES, 0, 12 * 3); // 12*3 indices starting at 0 -> 12 triangles
 
-		// 달에 해당하는 MVP2 
-		glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP2[0][0]);
-		// 3rst attribute buffer : vertices
-		glEnableVertexAttribArray(2);
-		glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
-		glVertexAttribPointer(
-			2,                  // attribute. No particular reason for 0, but must match the layout in the shader.
-			3,                  // size
-			GL_FLOAT,           // type
-			GL_FALSE,           // normalized?
-			0,                  // stride
-			(void*)0            // array buffer offset
-		);
-
-		// 4nd attribute buffer : colors
-		glEnableVertexAttribArray(3);
-		glBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
-		glVertexAttribPointer(
-			3,                                // attribute. No particular reason for 1, but must match the layout in the shader.
-			3,                                // size
-			GL_FLOAT,                         // type
-			GL_FALSE,                         // normalized?
-			0,                                // stride
-			(void*)0                          // array buffer offset
-		);
-		// 달에 해당하는 큐브 그려주기
-		glDrawArrays(GL_TRIANGLES, 0, 12 * 3); // 12*3 indices starting at 0 -> 12 triangles
-		
-
-		// 활성화시킨 기능들 비활성화
 		glDisableVertexAttribArray(0);
 		glDisableVertexAttribArray(1);
-		glDisableVertexAttribArray(2);
-		glDisableVertexAttribArray(3);
 
 		// Swap buffers
 		glfwSwapBuffers(window);
@@ -404,8 +475,9 @@ int main(void)
 
 	// Cleanup VBO and shader
 	glDeleteBuffers(1, &vertexbuffer);
-	glDeleteBuffers(1, &colorbuffer);
+	glDeleteBuffers(1, &uvbuffer);
 	glDeleteProgram(programID);
+	glDeleteTextures(1, &Texture);
 	glDeleteVertexArrays(1, &VertexArrayID);
 
 	// Close OpenGL window and terminate GLFW
