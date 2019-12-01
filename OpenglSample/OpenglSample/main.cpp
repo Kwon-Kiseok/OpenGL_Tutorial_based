@@ -1,4 +1,6 @@
-// main.cpp
+// cpp
+#define _CRT_SECURE_NO_WARNINGS
+
 #include <iostream>
 
 #include <stdio.h>
@@ -10,7 +12,7 @@
 #include <sstream>
 #include <stdlib.h>
 
-#include "include/GL/glew.h"		
+#include "include/GL/glew.h"
 #include "include/GLFW/glfw3.h" 
 #include "glm/glm/glm.hpp"
 #include "glm/glm/gtc/matrix_transform.hpp"
@@ -19,14 +21,112 @@
 #pragma comment(lib, "lib-vc2017/glew32.lib")
 #pragma comment(lib, "lib-vc2017/glfw3.lib")
 
-GLFWwindow* window;
-
-using namespace glm;
 using namespace std;
+
+#define _CRT_SECURE_NO_WARNINGS
+
+GLFWwindow* window;
 
 #define FOURCC_DXT1 0x31545844 // Equivalent to "DXT1" in ASCII
 #define FOURCC_DXT3 0x33545844 // Equivalent to "DXT3" in ASCII
 #define FOURCC_DXT5 0x35545844 // Equivalent to "DXT5" in ASCII
+
+bool loadOBJ(
+	const char * path,
+	std::vector<glm::vec3> & out_vertices,
+	std::vector<glm::vec2> & out_uvs,
+	std::vector<glm::vec3> & out_normals
+) {
+	printf("Loading OBJ file %s...\n", path);
+
+	std::vector<unsigned int> vertexIndices, uvIndices, normalIndices;
+	std::vector<glm::vec3> temp_vertices;
+	std::vector<glm::vec2> temp_uvs;
+	std::vector<glm::vec3> temp_normals;
+
+
+	FILE * file = fopen(path, "r");
+	if (file == NULL) {
+		printf("Impossible to open the file ! Are you in the right path ? See Tutorial 1 for details\n");
+		getchar();
+		return false;
+	}
+
+	while (1) {
+
+		char lineHeader[128];
+		// read the first word of the line
+		int res = fscanf(file, "%s", lineHeader);
+		if (res == EOF)
+			break; // EOF = End Of File. Quit the loop.
+
+				   // else : parse lineHeader
+
+		if (strcmp(lineHeader, "v") == 0) {
+			glm::vec3 vertex;
+			fscanf(file, "%f %f %f\n", &vertex.x, &vertex.y, &vertex.z);
+			temp_vertices.push_back(vertex);
+		}
+		else if (strcmp(lineHeader, "vt") == 0) {
+			glm::vec2 uv;
+			fscanf(file, "%f %f\n", &uv.x, &uv.y);
+			uv.y = -uv.y; // Invert V coordinate since we will only use DDS texture, which are inverted. Remove if you want to use TGA or BMP loaders.
+			temp_uvs.push_back(uv);
+		}
+		else if (strcmp(lineHeader, "vn") == 0) {
+			glm::vec3 normal;
+			fscanf(file, "%f %f %f\n", &normal.x, &normal.y, &normal.z);
+			temp_normals.push_back(normal);
+		}
+		else if (strcmp(lineHeader, "f") == 0) {
+			std::string vertex1, vertex2, vertex3;
+			unsigned int vertexIndex[3], uvIndex[3], normalIndex[3];
+			int matches = fscanf(file, "%d/%d/%d %d/%d/%d %d/%d/%d\n", &vertexIndex[0], &uvIndex[0], &normalIndex[0], &vertexIndex[1], &uvIndex[1], &normalIndex[1], &vertexIndex[2], &uvIndex[2], &normalIndex[2]);
+			if (matches != 9) {
+				printf("File can't be read by our simple parser :-( Try exporting with other options\n");
+				fclose(file);
+				return false;
+			}
+			vertexIndices.push_back(vertexIndex[0]);
+			vertexIndices.push_back(vertexIndex[1]);
+			vertexIndices.push_back(vertexIndex[2]);
+			uvIndices.push_back(uvIndex[0]);
+			uvIndices.push_back(uvIndex[1]);
+			uvIndices.push_back(uvIndex[2]);
+			normalIndices.push_back(normalIndex[0]);
+			normalIndices.push_back(normalIndex[1]);
+			normalIndices.push_back(normalIndex[2]);
+		}
+		else {
+			// Probably a comment, eat up the rest of the line
+			char stupidBuffer[1000];
+			fgets(stupidBuffer, 1000, file);
+		}
+
+	}
+
+	// For each vertex of each triangle
+	for (unsigned int i = 0; i < vertexIndices.size(); i++) {
+
+		// Get the indices of its attributes
+		unsigned int vertexIndex = vertexIndices[i];
+		unsigned int uvIndex = uvIndices[i];
+		unsigned int normalIndex = normalIndices[i];
+
+		// Get the attributes thanks to the index
+		glm::vec3 vertex = temp_vertices[vertexIndex - 1];
+		glm::vec2 uv = temp_uvs[uvIndex - 1];
+		glm::vec3 normal = temp_normals[normalIndex - 1];
+
+		// Put the attributes in buffers
+		out_vertices.push_back(vertex);
+		out_uvs.push_back(uv);
+		out_normals.push_back(normal);
+
+	}
+	fclose(file);
+	return true;
+}
 
 GLuint loadDDS(const char * imagepath) {
 
@@ -123,11 +223,11 @@ GLuint loadDDS(const char * imagepath) {
 
 GLuint LoadShaders(const char * vertex_file_path, const char * fragment_file_path) {
 
-	// 쉐이더들 생성
+	// Create the shaders
 	GLuint VertexShaderID = glCreateShader(GL_VERTEX_SHADER);
 	GLuint FragmentShaderID = glCreateShader(GL_FRAGMENT_SHADER);
 
-	// 버텍스 쉐이더 코드를 파일에서 읽기
+	// Read the Vertex Shader code from the file
 	std::string VertexShaderCode;
 	std::ifstream VertexShaderStream(vertex_file_path, std::ios::in);
 	if (VertexShaderStream.is_open()) {
@@ -137,12 +237,12 @@ GLuint LoadShaders(const char * vertex_file_path, const char * fragment_file_pat
 		VertexShaderStream.close();
 	}
 	else {
-		printf("파일 %s 를 읽을 수 없음. 정확한 디렉토리를 사용 중입니까 ? FAQ 를 우선 읽어보는 걸 잊지 마세요!\n", vertex_file_path);
+		printf("Impossible to open %s. Are you in the right directory ? Don't forget to read the FAQ !\n", vertex_file_path);
 		getchar();
 		return 0;
 	}
 
-	// 프래그먼트 쉐이더 코드를 파일에서 읽기
+	// Read the Fragment Shader code from the file
 	std::string FragmentShaderCode;
 	std::ifstream FragmentShaderStream(fragment_file_path, std::ios::in);
 	if (FragmentShaderStream.is_open()) {
@@ -156,13 +256,13 @@ GLuint LoadShaders(const char * vertex_file_path, const char * fragment_file_pat
 	int InfoLogLength;
 
 
-	// 버텍스 쉐이더를 컴파일
+	// Compile Vertex Shader
 	printf("Compiling shader : %s\n", vertex_file_path);
 	char const * VertexSourcePointer = VertexShaderCode.c_str();
 	glShaderSource(VertexShaderID, 1, &VertexSourcePointer, NULL);
 	glCompileShader(VertexShaderID);
 
-	// 버텍스 쉐이더를 검사
+	// Check Vertex Shader
 	glGetShaderiv(VertexShaderID, GL_COMPILE_STATUS, &Result);
 	glGetShaderiv(VertexShaderID, GL_INFO_LOG_LENGTH, &InfoLogLength);
 	if (InfoLogLength > 0) {
@@ -171,13 +271,15 @@ GLuint LoadShaders(const char * vertex_file_path, const char * fragment_file_pat
 		printf("%s\n", &VertexShaderErrorMessage[0]);
 	}
 
-	// 프래그먼트 쉐이더를 컴파일
+
+
+	// Compile Fragment Shader
 	printf("Compiling shader : %s\n", fragment_file_path);
 	char const * FragmentSourcePointer = FragmentShaderCode.c_str();
 	glShaderSource(FragmentShaderID, 1, &FragmentSourcePointer, NULL);
 	glCompileShader(FragmentShaderID);
 
-	// 프래그먼트 쉐이더를 검사
+	// Check Fragment Shader
 	glGetShaderiv(FragmentShaderID, GL_COMPILE_STATUS, &Result);
 	glGetShaderiv(FragmentShaderID, GL_INFO_LOG_LENGTH, &InfoLogLength);
 	if (InfoLogLength > 0) {
@@ -186,14 +288,16 @@ GLuint LoadShaders(const char * vertex_file_path, const char * fragment_file_pat
 		printf("%s\n", &FragmentShaderErrorMessage[0]);
 	}
 
-	// 프로그램에 링크
+
+
+	// Link the program
 	printf("Linking program\n");
 	GLuint ProgramID = glCreateProgram();
 	glAttachShader(ProgramID, VertexShaderID);
 	glAttachShader(ProgramID, FragmentShaderID);
 	glLinkProgram(ProgramID);
 
-	// 프로그램 검사
+	// Check the program
 	glGetProgramiv(ProgramID, GL_LINK_STATUS, &Result);
 	glGetProgramiv(ProgramID, GL_INFO_LOG_LENGTH, &InfoLogLength);
 	if (InfoLogLength > 0) {
@@ -201,6 +305,7 @@ GLuint LoadShaders(const char * vertex_file_path, const char * fragment_file_pat
 		glGetProgramInfoLog(ProgramID, InfoLogLength, NULL, &ProgramErrorMessage[0]);
 		printf("%s\n", &ProgramErrorMessage[0]);
 	}
+
 
 	glDetachShader(ProgramID, VertexShaderID);
 	glDetachShader(ProgramID, FragmentShaderID);
@@ -217,6 +322,7 @@ int main(void)
 	if (!glfwInit())
 	{
 		fprintf(stderr, "Failed to initialize GLFW\n");
+		getchar();
 		return -1;
 	}
 
@@ -227,9 +333,10 @@ int main(void)
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
 	// Open a window and create its OpenGL context
-	window = glfwCreateWindow(1024, 768, "Tutorial 05 - Textured Cube", NULL, NULL);
+	window = glfwCreateWindow(1024, 768, "Tutorial 08 - Basic Shading", NULL, NULL);
 	if (window == NULL) {
 		fprintf(stderr, "Failed to open GLFW window. If you have an Intel GPU, they are not 3.3 compatible. Try the 2.1 version of the tutorials.\n");
+		getchar();
 		glfwTerminate();
 		return -1;
 	}
@@ -239,11 +346,22 @@ int main(void)
 	glewExperimental = true; // Needed for core profile
 	if (glewInit() != GLEW_OK) {
 		fprintf(stderr, "Failed to initialize GLEW\n");
+		getchar();
+		glfwTerminate();
 		return -1;
 	}
 
+	/*
 	// Ensure we can capture the escape key being pressed below
 	glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
+	// Hide the mouse and enable unlimited mouvement
+	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+	// Set the mouse at the center of the screen
+	glfwPollEvents();
+	glfwSetCursorPos(window, 1024 / 2, 768 / 2);
+
+	*/
 
 	// Dark blue background
 	glClearColor(0.0f, 0.0f, 0.4f, 0.0f);
@@ -252,6 +370,9 @@ int main(void)
 	glEnable(GL_DEPTH_TEST);
 	// Accept fragment if it closer to the camera than the former one
 	glDepthFunc(GL_LESS);
+
+	// Cull triangles which normal is not towards the camera
+	//glEnable(GL_CULL_FACE);
 
 	GLuint VertexArrayID;
 	glGenVertexArrays(1, &VertexArrayID);
@@ -262,152 +383,77 @@ int main(void)
 
 	// Get a handle for our "MVP" uniform
 	GLuint MatrixID = glGetUniformLocation(programID, "MVP");
+	GLuint ViewMatrixID = glGetUniformLocation(programID, "V");
+	GLuint ModelMatrixID = glGetUniformLocation(programID, "M");
 
-	// Projection matrix : 45° Field of View, 4:3 ratio, display range : 0.1 unit <-> 100 units
-	glm::mat4 Projection = glm::perspective(glm::radians(45.0f), 4.0f / 3.0f, 0.1f, 100.0f);
-	// Camera matrix
-	glm::mat4 View = glm::lookAt(
-		glm::vec3(4, 3, 3), // Camera is at (4,3,3), in World Space
-		glm::vec3(0, 0, 0), // and looks at the origin
-		glm::vec3(0, 1, 0)  // Head is up (set to 0,-1,0 to look upside-down)
-	);
-	// Model matrix : an identity matrix (model will be at the origin)
-	glm::mat4 Model = glm::mat4(1.0f);
-	// Our ModelViewProjection : multiplication of our 3 matrices
-	glm::mat4 MVP = Projection * View * Model; // Remember, matrix multiplication is the other way around
-
-											   // Load the texture using any two methods
-											   //GLuint Texture = loadBMP_custom("uvtemplate.bmp");
+	// Load the texture
 	GLuint Texture = loadDDS("uvtemplate.DDS");
 
 	// Get a handle for our "myTextureSampler" uniform
 	GLuint TextureID = glGetUniformLocation(programID, "myTextureSampler");
 
+	// Read our .obj file
+	std::vector<glm::vec3> vertices;
+	std::vector<glm::vec2> uvs;
+	std::vector<glm::vec3> normals;
+	bool res = loadOBJ("cube.obj", vertices, uvs, normals);
 
-	//-----------------------------------------------------------
-	int size = 0;		//배열의 사이즈 크기 파악용
-	int position = 0;
-	ifstream File;	//파일변수
-	string search;	//파일 내 단어 찾기용 변수
-	string FileName;	//텍스처파일명 변수
+	// 카메라
 
-	File.open("Data.txt");
+	// Compute the MVP matrix from keyboard and mouse input
+	glm::mat4 ProjectionMatrix = glm::perspective(glm::radians(45.0f), 4.0f / 3.0f, 0.1f, 100.0f);
+	// Camera matrix
+	glm::mat4 ViewMatrix = glm::lookAt(
+		glm::vec3(12, 9, 9), // Camera is at (4,3,3), in World Space
+		glm::vec3(0, 0, 0), // and looks at the origin
+		glm::vec3(0, 1, 0)  // Head is up (set to 0,-1,0 to look upside-down)
+	);
 
-	//버텍스 부분 파일의 크기 파악
-	while (search != "vertexData")
-	{
-		File >> search;
-	}
+	// 알파가 적용될 큐브
+	glm::mat4 ModelMatrix = glm::mat4(1.0);
+	glm::mat4 MVP = ProjectionMatrix * ViewMatrix * ModelMatrix;
 
-	for (size; search != "vertexDataEnd"; size++)
-	{
-		File >> search;
-	}
+	glm::mat4 ModelMatrix2 = glm::mat4(1.0);
+	ModelMatrix2 = glm::scale(ModelMatrix2, glm::vec3(2.f, 2.f, 2.f));
 
-	//파일을 처음으로 되돌려줌
-	File.seekg(0);
+	// 빛
+	glm::vec3 lightPos = glm::vec3(0.5f, 0, 6.f);
+	glm::vec3 RedlightPos = glm::vec3(0.5f, 0, 6.f);
 
-	//버텍스 버퍼 동적할당
-	static GLfloat *g_vertex_buffer_data = new GLfloat[size];
+	glm::mat4 LightModel = glm::mat4(1.0);
+	LightModel = glm::translate(LightModel, lightPos);
 
-	//버텍스 버퍼에 값을 할당해줌
-	for (int i = 0; i < size ; i++)
-	{
-		File >> search;
-		//구분 문자에서는 스킵
-		if (search == "vertexData" || search == "vertexDataEnd")
-		{
-			continue;
-		}
-		//구분문자 시 인덱스를 맞춰주기 위해 -1 해줌
-		else
-		{
-			const char* offset = search.c_str();
-			g_vertex_buffer_data[i-1] = atof(offset);
+	glm::mat4 RedLightModel = glm::mat4(1.0);
+	RedLightModel = glm::translate(RedLightModel, RedlightPos);
 
-			//cout << i-1 <<" "<<g_vertex_buffer_data[i-1] << endl;
-		}
 
-	}
-
-	//파일 이름 받아오기
-	while (search != "FileName")
-	{
-		File >> search;
-	}
-
-	File >> FileName;
-	cout <<"Texture File name : " <<FileName << endl;
-
-	//UV좌표 받아오기
-	while (search != "uvData")
-	{
-		File >> search;
-	}
-	size = 1;
-
-	//uvData 에서 uvDataEnd 까지의 사이즈를 구함
-	for (size; search != "uvDataEnd"; size++)
-	{
-		File >> search;
-	}
-
-	//파일을 다시 처음부터 읽어줌
-	File.seekg(0);
-
-	//파일 커서를 uvData에 맞춰줌
-	while (search != "uvData")
-	{
-		File >> search;
-	}
-
-	//파일 커서가 uvData 일 때, 위치를 알려줌
-	if (search == "uvData")
-	{
-		position = File.tellg();
-		cout << position <<endl;
-	}
-
-	//파일 커서 위치를 uvData 다음으로 옮겨줌
-	File.seekg(position + 1);
-
-	//uv 버퍼 동적할당
-	static GLfloat *g_uv_buffer_data = new GLfloat[size];
-
-	//uv 버퍼에 값을 할당해줌
-	for (int i = 0; i < size; i++)
-	{
-		File >> search;
-		if (i%2 == 1)
-		{
-			char tempChar[50];
-			strcpy_s(tempChar, sizeof(tempChar), search.c_str());
-			char *Context = NULL;
-			char *token = strtok_s(tempChar, "-", &Context);
-			float LeftNum = atof(token);
-			float RightNum = atof(Context);
-			
-			g_uv_buffer_data[i] = LeftNum - RightNum;
-		}
-		else
-		{
-			const char* offset = search.c_str();
-			g_uv_buffer_data[i] = atof(offset);
-		}
-	}
-
-	File.close();
-	//-----------------------------------------------------------
+	// Load it into a VBO
 
 	GLuint vertexbuffer;
 	glGenBuffers(1, &vertexbuffer);
 	glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
-	glBufferData(GL_ARRAY_BUFFER, _msize(g_vertex_buffer_data), g_vertex_buffer_data, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(glm::vec3), &vertices[0], GL_STATIC_DRAW);
 
 	GLuint uvbuffer;
 	glGenBuffers(1, &uvbuffer);
 	glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
-	glBufferData(GL_ARRAY_BUFFER, _msize(g_uv_buffer_data), g_uv_buffer_data, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, uvs.size() * sizeof(glm::vec2), &uvs[0], GL_STATIC_DRAW);
+
+	GLuint normalbuffer;
+	glGenBuffers(1, &normalbuffer);
+	glBindBuffer(GL_ARRAY_BUFFER, normalbuffer);
+	glBufferData(GL_ARRAY_BUFFER, normals.size() * sizeof(glm::vec3), &normals[0], GL_STATIC_DRAW);
+
+	// Get a handle for our "LightPosition" uniform
+	glUseProgram(programID);
+	GLuint LightID = glGetUniformLocation(programID, "LightPosition_worldspace");
+	GLuint RedLightID = glGetUniformLocation(programID, "RedLightPosition_worldspace");
+
+	GLuint AlphaValueID = glGetUniformLocation(programID, "alphavalue");
+
+	// Enable blending
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	do {
 
@@ -417,9 +463,44 @@ int main(void)
 		// Use our shader
 		glUseProgram(programID);
 
+		MVP = ProjectionMatrix * ViewMatrix * ModelMatrix;
+
+		static int WLRotCtrl = 0, RLRotCtrl = 0;
+		WLRotCtrl++;
+		RLRotCtrl++;
+		if (WLRotCtrl % 3 == 0)
+		{
+			LightModel = glm::rotate(LightModel, glm::radians(10.f), glm::vec3(0.f, 1.f, 0.f));
+			LightModel = glm::translate(LightModel, glm::vec3(1.f, 0.f, 0.f));
+
+			glm::vec4 tempPos(lightPos.x, lightPos.y, lightPos.z, 1);
+			glm::mat4 transformMat = glm::mat4(1.0);
+			transformMat = glm::rotate(transformMat, glm::radians(10.f), glm::vec3(0.f, 1.f, 0.f));
+			transformMat = glm::translate(transformMat, glm::vec3(1.f, 0.f, 0.f));
+			tempPos = transformMat * tempPos;
+			lightPos = tempPos;
+		}
+		if (RLRotCtrl % 2 == 0)
+		{
+			RedLightModel = glm::rotate(RedLightModel, glm::radians(10.f), glm::vec3(0.f, 1.f, 0.f));
+			RedLightModel = glm::translate(RedLightModel, glm::vec3(1.f, 0.f, 0.f));
+
+			glm::vec4 tempPos(RedlightPos.x, RedlightPos.y, RedlightPos.z, 1);
+			glm::mat4 transformMat = glm::mat4(1.0);
+			transformMat = glm::rotate(transformMat, glm::radians(10.f), glm::vec3(0.f, 1.f, 0.f));
+			transformMat = glm::translate(transformMat, glm::vec3(1.f, 0.f, 0.f));
+			tempPos = transformMat * tempPos;
+			RedlightPos = tempPos;
+		}
+
 		// Send our transformation to the currently bound shader, 
 		// in the "MVP" uniform
 		glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
+		glUniformMatrix4fv(ModelMatrixID, 1, GL_FALSE, &ModelMatrix[0][0]);
+		glUniformMatrix4fv(ViewMatrixID, 1, GL_FALSE, &ViewMatrix[0][0]);
+
+		glUniform3f(LightID, lightPos.x, lightPos.y, lightPos.z);
+		glUniform3f(RedLightID, RedlightPos.x, RedlightPos.y, RedlightPos.z);
 
 		// Bind our texture in Texture Unit 0
 		glActiveTexture(GL_TEXTURE0);
@@ -427,11 +508,12 @@ int main(void)
 		// Set our "myTextureSampler" sampler to use Texture Unit 0
 		glUniform1i(TextureID, 0);
 
+		// MVP 1 그려주기
 		// 1rst attribute buffer : vertices
 		glEnableVertexAttribArray(0);
 		glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
 		glVertexAttribPointer(
-			0,                  // attribute. No particular reason for 0, but must match the layout in the shader.
+			0,                  // attribute
 			3,                  // size
 			GL_FLOAT,           // type
 			GL_FALSE,           // normalized?
@@ -439,34 +521,84 @@ int main(void)
 			(void*)0            // array buffer offset
 		);
 
-		//uv 좌표값을 프레임마다 더해서 갱신해줌
-		for (int i = 0; i < size; i++)
-		{
-			g_uv_buffer_data[i] += 0.005f;
-		}
-		glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
-		glBufferData(GL_ARRAY_BUFFER, _msize(g_uv_buffer_data), g_uv_buffer_data, GL_STATIC_DRAW);
-
 		// 2nd attribute buffer : UVs
 		glEnableVertexAttribArray(1);
 		glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
 		glVertexAttribPointer(
-			1,                                // attribute. No particular reason for 1, but must match the layout in the shader.
-			2,                                // size : U+V => 2
+			1,                                // attribute
+			2,                                // size
 			GL_FLOAT,                         // type
 			GL_FALSE,                         // normalized?
 			0,                                // stride
 			(void*)0                          // array buffer offset
 		);
 
-		// Draw the triangle !
-		glDrawArrays(GL_TRIANGLES, 0, 12 * 3); // 12*3 indices starting at 0 -> 12 triangles
+		// 3rd attribute buffer : normals
+		glEnableVertexAttribArray(2);
+		glBindBuffer(GL_ARRAY_BUFFER, normalbuffer);
+		glVertexAttribPointer(
+			2,                                // attribute
+			3,                                // size
+			GL_FLOAT,                         // type
+			GL_FALSE,                         // normalized?
+			0,                                // stride
+			(void*)0                          // array buffer offset
+		);
+
+		// Draw the triangles !
+		glDrawArrays(GL_TRIANGLES, 0, vertices.size());
+
+		MVP = ProjectionMatrix * ViewMatrix * ModelMatrix2;
+
+		// MVP 2 그려주기
+
+		glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
+
+		// 1rst attribute buffer : vertices
+		glEnableVertexAttribArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
+		glVertexAttribPointer(
+			0,                  // attribute
+			3,                  // size
+			GL_FLOAT,           // type
+			GL_FALSE,           // normalized?
+			0,                  // stride
+			(void*)0            // array buffer offset
+		);
+
+		// 2nd attribute buffer : UVs
+		glEnableVertexAttribArray(1);
+		glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
+		glVertexAttribPointer(
+			1,                                // attribute
+			2,                                // size
+			GL_FLOAT,                         // type
+			GL_FALSE,                         // normalized?
+			0,                                // stride
+			(void*)0                          // array buffer offset
+		);
+
+		// 3rd attribute buffer : normals
+		glEnableVertexAttribArray(2);
+		glBindBuffer(GL_ARRAY_BUFFER, normalbuffer);
+		glVertexAttribPointer(
+			2,                                // attribute
+			3,                                // size
+			GL_FLOAT,                         // type
+			GL_FALSE,                         // normalized?
+			0,                                // stride
+			(void*)0                          // array buffer offset
+		);
+
+		glDrawArrays(GL_TRIANGLES, 0, vertices.size());
 
 		glDisableVertexAttribArray(0);
 		glDisableVertexAttribArray(1);
+		glDisableVertexAttribArray(2);
 
 		// Swap buffers
 		glfwSwapBuffers(window);
+		glfwSwapInterval(1);
 		glfwPollEvents();
 
 	} // Check if the ESC key was pressed or the window was closed
@@ -476,6 +608,7 @@ int main(void)
 	// Cleanup VBO and shader
 	glDeleteBuffers(1, &vertexbuffer);
 	glDeleteBuffers(1, &uvbuffer);
+	glDeleteBuffers(1, &normalbuffer);
 	glDeleteProgram(programID);
 	glDeleteTextures(1, &Texture);
 	glDeleteVertexArrays(1, &VertexArrayID);
